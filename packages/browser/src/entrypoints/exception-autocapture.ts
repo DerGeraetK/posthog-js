@@ -1,11 +1,15 @@
 import { assignableWindow, window } from '../utils/globals'
 import { ErrorEventArgs } from '../types'
 import { createLogger } from '../utils/logger'
+import { isString } from '@posthog/core'
 import type { ErrorTracking } from '@posthog/core'
 import { buildErrorPropertiesBuilder } from '../posthog-exceptions'
 
 const logger = createLogger('[ExceptionAutocapture]')
 const errorPropertiesBuilder = buildErrorPropertiesBuilder()
+
+// browsers replace errors from cross-origin scripts with this message and strip the error, file, and position
+const OPAQUE_CROSS_ORIGIN_ERROR = /^Script error\.?$/
 
 const wrapOnError = (captureFn: (props: ErrorTracking.ErrorProperties) => void) => {
     const win = window as any
@@ -17,10 +21,14 @@ const wrapOnError = (captureFn: (props: ErrorTracking.ErrorProperties) => void) 
     win.onerror = function (...args: ErrorEventArgs): boolean {
         const error = args[4]
         const event = args[0]
-        const errorProperties = errorPropertiesBuilder.buildFromUnknown(error || event, {
-            mechanism: { handled: false },
-        })
-        captureFn(errorProperties)
+        if (!error && isString(event) && OPAQUE_CROSS_ORIGIN_ERROR.test(event)) {
+            logger.info('Skipping opaque cross-origin "Script error." because it has no stack or source')
+        } else {
+            const errorProperties = errorPropertiesBuilder.buildFromUnknown(error || event, {
+                mechanism: { handled: false },
+            })
+            captureFn(errorProperties)
+        }
         return originalOnError?.(...args) ?? false
     }
     win.onerror.__POSTHOG_INSTRUMENTED__ = true
