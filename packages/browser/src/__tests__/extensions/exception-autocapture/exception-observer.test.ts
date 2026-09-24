@@ -120,6 +120,22 @@ describe('Exception Observer', () => {
             })
         })
 
+        it.each(['Script error.', 'Script error'])(
+            'does not capture an opaque cross-origin "%s" without an error object',
+            (message) => {
+                window!.onerror?.call(window, message, '', 0, 0, null as any)
+
+                expect(beforeSendMock).not.toHaveBeenCalled()
+            }
+        )
+
+        it('captures "Script error." when the browser provides an error object', () => {
+            const error = new Error('Script error.')
+            window!.onerror?.call(window, 'Script error.', 'source', 0, 0, error)
+
+            expect(beforeSendMock).toHaveBeenCalledTimes(1)
+        })
+
         it('captures an event when an unhandled rejection occurs', () => {
             const error = new Error('test error')
             // PromiseRejectionEvent does not exists in node, it is treated as an event here
@@ -240,6 +256,12 @@ describe('Exception Observer', () => {
             window!.onerror?.call(window, 'message', 'source', 0, 0, error)
 
             expect(originalOnError).toHaveBeenCalledWith('message', 'source', 0, 0, error)
+        })
+
+        it('should call original onerror handler for an opaque cross-origin "Script error."', () => {
+            window!.onerror?.call(window, 'Script error.', '', 0, 0, null as any)
+
+            expect(originalOnError).toHaveBeenCalledWith('Script error.', '', 0, 0, null)
         })
 
         it('should call original onunhandledrejection handler if one was present when wrapped', () => {
